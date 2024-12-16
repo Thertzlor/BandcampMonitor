@@ -43,13 +43,13 @@ const getDefault =()=>({text:'',matchArtist:true,matchTitle:true,name:''})
 
 const pageSize = 4
 const page = ref(0)
-const filt = ref<FilterObject>(getDefault())
+const activeFilter = ref<FilterObject>(getDefault())
 const exput = ref<string>("")
-const optVis = ref(false)
-const noNot = ref(new Set<string>())
-const block = ref(false)
-const orig = ref(true)
-const adf = ref(false)
+const settingsActive = ref(false)
+const unNotable = ref(new Set<string>())
+const blockRefresh = ref(false)
+const origCurrency = ref(true)
+const addFilterVisible = ref(false)
 
 const db = new (class BandcampDexie extends Dexie {
   exclude!:Table<{id:string,date?:number}>
@@ -61,17 +61,18 @@ const db = new (class BandcampDexie extends Dexie {
     this.version(1).stores({exclude:'id',favorites:'id',filters:'name'});
   }
 })()
+
 const queries = reactive({exclude:new Set<string>(),excludeError:null,favorites:[] as string[],filters:[] as FilterObject[]})
 const queryRefs = toRefs(queries)
 
-const exScription = liveQuery(()=>db.exclude.toArray()).subscribe(items => queryRefs.exclude.value = new Set(items.sort((a,b) => (a.date??0)>(b.date??0)?1:-1).map(m=>m.id)))
-const favScription = liveQuery(()=>db.favorites.toArray()).subscribe(items => queryRefs.favorites.value = items.sort((a,b) => (a.date??0)>(b.date??0)?1:-1).map(m=>m.id))
-const filtScription = liveQuery(()=>db.filters.toArray()).subscribe(items => queryRefs.filters.value = items)
+const excludeSubscription = liveQuery(()=>db.exclude.toArray()).subscribe(items => queryRefs.exclude.value = new Set(items.sort((a,b) => (a.date??0)>(b.date??0)?1:-1).map(m=>m.id)))
+const favoriteSubscription = liveQuery(()=>db.favorites.toArray()).subscribe(items => queryRefs.favorites.value = items.sort((a,b) => (a.date??0)>(b.date??0)?1:-1).map(m=>m.id))
+const filterSubscription = liveQuery(()=>db.filters.toArray()).subscribe(items => queryRefs.filters.value = items)
 
 onUnmounted(()=>{
-  exScription.unsubscribe()
-  favScription.unsubscribe()
-  filtScription.unsubscribe()
+  excludeSubscription.unsubscribe()
+  favoriteSubscription.unsubscribe()
+  filterSubscription.unsubscribe()
 })
 
 const stored = localStorage.getItem('bcd')
@@ -79,14 +80,14 @@ const storedVal:SettingsObject|undefined = stored?JSON.parse(stored):undefined
 const settings = ref<SettingsObject>({overpayThreshold:10,priceMin:0,priceLimit:999,priceThreshold:0,type:'a',refresher:30,...storedVal})
 
 const editExclude = ref(false)
-const editFav = ref(false)
-const noEx = ref(false)
+const editFavorites = ref(false)
+const disableExclude = ref(false)
 const notable = ref<Record<string,BandcampInfo>>({})
 
 
 const checkNotability = (i:BandcampInfo) => {
   const {amount_paid_usd,url,item_price_usd} = i
-  if(noNot.value.has(url)) return i
+  if(unNotable.value.has(url)) return i
   const overpaid = amount_paid_usd - item_price_usd
   if(amount_paid_usd < settings.value.priceThreshold  || overpaid < settings.value.overpayThreshold) return i
   if(notable.value[url]) notable.value[url].amount_paid_usd = Math.max(amount_paid_usd,notable.value[url].amount_paid_usd)
@@ -95,17 +96,17 @@ const checkNotability = (i:BandcampInfo) => {
 }
 
 const matchFilter = (f:FilterObject, b:BandcampInfo) => {
-  if(noEx.value) return false
+  if(disableExclude.value) return false
   const reg = new RegExp(f.regex?f.text:`\\b${f.text}\\b`,f.caseSensitive?undefined:'i')
   if(f.matchArtist && reg.test(b.artist_name)) return true
   if(f.matchTitle && reg.test(b.item_description)) return true
   return false
 }
 
-const fullCamp = ref<BandcampInfo[]>([]);
-const saveSet = () => localStorage.setItem('bcd', JSON.stringify(settings.value))
+const unfilteredInfoEntries = ref<BandcampInfo[]>([]);
+const saveSettings = () => localStorage.setItem('bcd', JSON.stringify(settings.value))
 
-const freshCamp = (async () => {
+const refreshSalesData = (async () => {
   try {
     const res = await fetch('https://bandcamp.com/api/salesfeed/1/get?start_date=0');
     const camps = (await res.json() as {events:{items:BandcampInfo[]}[]}).events.flatMap((e)=>e.items.map(e=>{
@@ -115,16 +116,16 @@ const freshCamp = (async () => {
       e.item_price_usd = e.item_price * conversionRate
       return e;
     }));
-    fullCamp.value = camps
-    setTimeout(saveSet,300)
+    unfilteredInfoEntries.value = camps
+    setTimeout(saveSettings,300)
   } catch (err:any) {console.log(err.message);}
 });
 
-freshCamp()
+refreshSalesData()
 
 const deleteFavoritesUpTo = (n:number) => {for (let i = 0; i < n; i++)  db.favorites.delete(queries.favorites[i])}
 
-const importster = (impstr:string) => {
+const importer = (impstr:string) => {
   try{
     const arr:string[]|undefined = JSON.parse(impstr)
     if(!Array.isArray(arr)) throw new Error('No Array')
@@ -133,32 +134,31 @@ const importster = (impstr:string) => {
   }catch(e){console.log(e)}
 }
 
-const autoWomp = (ev:KeyboardEvent,fav=false) => {
-  if(ev.ctrlKey || ev.altKey) return;
-  const uh = nootable.value.sort((a,b) => a.amount_paid_usd>b.amount_paid_usd?-1:1).slice(pageSize*page.value,pageSize*(page.value+1))
-  const woba = uh[0];
-  if(woba){
-    if(fav)db.favorites.add({id:woba.idPlus,date:Date.now()})
-    deligor(woba,fav || ev.shiftKey)
-  }
-}
-
-const deligor = (i:BandcampInfo,shift=false) => {
-  noNot.value.add(i.url)
+const autoRemove = (i:BandcampInfo,shift=false) => {
+  unNotable.value.add(i.url)
   if(!shift) db.exclude.add({id:i.url,date:Date.now()})
   delete (notable.value)[i.url]
 }
 
-setInterval(()=>(!block.value) && freshCamp(),settings.value.refresher * 1000)
+setInterval(()=>(!blockRefresh.value) && refreshSalesData(),settings.value.refresher * 1000)
 
-const filCamp = computed(()=> fullCamp.value.filter(b=>(b.item_price_usd >= settings.value.priceMin) && (b.item_price_usd <= settings.value.priceLimit) &&  (noEx.value || !queries.exclude.has(b.url))  && (!settings.value.type || b.item_type === settings.value.type)).filter(b=>queries.filters.every(f => !matchFilter(f,b))))
-const nootable =computed(()=> Object.entries(notable.value).filter(([k,v]) => !noNot.value.has(k) && !queries.exclude.has(v.url)).map(([_,v]) => v).filter(b=>queries.filters.every(f => !matchFilter(f,b))))
+const filteredEntries = computed(()=> unfilteredInfoEntries.value.filter(b=>(b.item_price_usd >= settings.value.priceMin) && (b.item_price_usd <= settings.value.priceLimit) &&  (disableExclude.value || !queries.exclude.has(b.url))  && (!settings.value.type || b.item_type === settings.value.type)).filter(b=>queries.filters.every(f => !matchFilter(f,b))))
 
-const pipe = (x:any,...bla:any) => (console.log(x,...bla),x)
+const notableEntries =computed(()=> Object.entries(notable.value).filter(([k,v]) => !unNotable.value.has(k) && !queries.exclude.has(v.url)).map(([_,v]) => v).filter(b=>queries.filters.every(f => !matchFilter(f,b))))
 
-const numPages = computed(()=> Math.ceil(nootable.value.length/pageSize))
+const shortcutAdd = (ev:KeyboardEvent,fav=false) => {
+  if(ev.ctrlKey || ev.altKey) return;
+  const pageList = notableEntries.value.sort((a,b) => a.amount_paid_usd>b.amount_paid_usd?-1:1).slice(pageSize*page.value,pageSize*(page.value+1))
+  const item = pageList[0];
+  if(item){
+    if(fav)db.favorites.add({id:item.idPlus,date:Date.now()})
+    autoRemove(item, ev.shiftKey)
+  }
+}
+
+const numPages = computed(()=> Math.ceil(notableEntries.value.length/pageSize))
 watch(numPages,()=>page.value = Math.min(page.value,numPages.value-1))
-watch(adf,a => !a && (filt.value = getDefault()))
+watch(addFilterVisible,a => !a && (activeFilter.value = getDefault()))
 const nPage = () => page.value=Math.min(numPages.value-1,page.value+1)
 const pPage = () => page.value = Math.max(0,page.value-1)
 const unReact = (x:any) => JSON.parse(JSON.stringify(x))
@@ -168,11 +168,11 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
 
 <template>
   <div id="logo"><img src="./assets/bcm_logo.png" alt="bmonitor logo"></div>
-  <a v-if="!optVis" id="helplink" title="Help/Readme" href="https://github.com/Thertzlor/BandcampMonitor/blob/main/README.md#usage">?</a>
+  <a v-if="!settingsActive" id="helplink" title="Help/Readme" href="https://github.com/Thertzlor/BandcampMonitor/blob/main/README.md#usage">?</a>
   <div class="form">
-    <label title="Show Settings" id="mainOpt">⚙<input type="checkbox" class="inbox" v-model="optVis"></label>
+    <label title="Show Settings" id="mainOpt">⚙<input type="checkbox" class="inbox" v-model="settingsActive"></label>
 
-    <template v-if="optVis">
+    <template v-if="settingsActive">
       <h3>Price Criteria</h3>
       <label>Maximum Base Price <input type="number" v-model="settings.priceLimit"></label>
       <label>Minimum Base Price <input type="number" v-model="settings.priceMin"></label>
@@ -191,19 +191,19 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
         </select>
       </label>
       <label title="Save Settings and reload page for this setting to apply.">Refresh Interval (Seconds)<input type="number" v-model="settings.refresher"></label>
-      <label>Show Amounts in {{orig?"Dollars":"Original Currency"}}<input type="checkbox" v-model="orig"></label>
-      <label :style="{color:block?'rgb(55 147 39)':'rgb(147 39 63)'}">{{block?"Resume":"Pause"}} Auto Refresh<input type="checkbox" v-model="block"></label>
+      <label>Show Amounts in {{origCurrency?"Dollars":"Original Currency"}}<input type="checkbox" v-model="origCurrency"></label>
+      <label :style="{color:blockRefresh?'rgb(55 147 39)':'rgb(147 39 63)'}">{{blockRefresh?"Resume":"Pause"}} Auto Refresh<input type="checkbox" v-model="blockRefresh"></label>
       <hr>
-      <button @click="()=>saveSet()">Save Settings</button>
-      <button @click="()=>freshCamp()">Manual Sales Refresh</button>
+      <button @click="()=>saveSettings()">Save Settings</button>
+      <button @click="()=>refreshSalesData()">Manual Sales Refresh</button>
     </template>
 
   </div>
-  <input class="inbox" type="checkbox" id="fbox" v-model="editFav"><label class="top" for="fbox">Favorites [{{ queries.favorites.length }}] {{editFav?'⬆':"⬇"}}</label>
-  <div v-if="editFav" class="listium">
+  <input class="inbox" type="checkbox" id="fbox" v-model="editFavorites"><label class="top" for="fbox">Favorites [{{ queries.favorites.length }}] {{editFavorites?'⬆':"⬇"}}</label>
+  <div v-if="editFavorites" class="listium">
     <button v-if="queries.favorites.length" @click="()=>void db.favorites.clear()">Clear All</button>
     <button id="expbut" @click="()=>{exput=JSON.stringify(queries.favorites)}">Export</button>
-    <button id="impbut" :disabled="!exput" @click="() => importster(exput) ">Import</button><br>
+    <button id="impbut" :disabled="!exput" @click="() => importer(exput) ">Import</button><br>
     <textarea v-if="exput" v-model="exput"></textarea>
     <ul>
       <li class="flat_entry" v-for="[i,[t,u]] in queries.favorites.map((e,i) => [i,e.split(';') as [string,string]] as const)" :key="i"><button @click="e=> e.shiftKey? deleteFavoritesUpTo(i+1)  : db.favorites.delete(queries.favorites[i])">Remove</button><a :href="u || `https://bandcamp.com/search?q=${t.replace(/[ -&]+/g,'+')}&item_type=a`">{{ t }}</a></li>
@@ -211,19 +211,19 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
   </div>
   <input class="inbox" type="checkbox" id="ebox" v-model="editExclude"><label class="top" for="ebox">Excluded {{editExclude?'⬆':"⬇"}}</label>
   <div class="listium" v-if="editExclude">
-    <button v-if="queries.exclude.size" @click="()=> noEx = !noEx" :style="{background:noEx?'red':'green'}" id="exShow">{{noEx?'Hide':'Show'}} All</button>
-    <h3>Exclusion Filters</h3><input type="checkbox" id="adf" v-model="adf"><label for="adf">Add Filter</label>
-    <form v-if="adf" id="fiForm" @submit.stop.prevent="()=> (db.filters.add(unReact(filt)),(filt = getDefault()))">
-      <input required placeholder="Name" type="text" name="txt" v-model="filt.name">
-      <input required placeholder="Filter Value" type="text" name="nam" v-model="filt.text">
+    <button v-if="queries.exclude.size" @click="()=> disableExclude = !disableExclude" :style="{background:disableExclude?'red':'green'}" id="exShow">{{disableExclude?'Hide':'Show'}} All</button>
+    <h3>Exclusion Filters</h3><input type="checkbox" id="adf" v-model="addFilterVisible"><label for="adf">Add Filter</label>
+    <form v-if="addFilterVisible" id="fiForm" @submit.stop.prevent="()=> (db.filters.add(unReact(activeFilter)),(activeFilter = getDefault()))">
+      <input required placeholder="Name" type="text" name="txt" v-model="activeFilter.name">
+      <input required placeholder="Filter Value" type="text" name="nam" v-model="activeFilter.text">
       <template v-for="t in (['matchTitle','matchArtist','caseSensitive','regex'] as const)" :key="t">
-        <input v-model="filt[t]" type="checkbox" name="ckecker" :id="t">
+        <input v-model="activeFilter[t]" type="checkbox" name="ckecker" :id="t">
         <label :for="t" class="f_label">{{ t.replace(/([A-Z])/," $1").replace(/^./, m=>m.toUpperCase()) }} </label>
       </template>
       <button type="submit">Save Filter</button>
     </form>
     <ul>
-      <li class="flat_entry" v-for="f of queries.filters.values()" :key="f.name"><button @click="()=>db.filters.delete(f.name)">Remove</button><button class="edit" @click="((filt=queries.filters.find(l => l.name == f.name)?? filt),(adf=true))">Edit</button>{{ f.name }}</li>
+      <li class="flat_entry" v-for="f of queries.filters.values()" :key="f.name"><button @click="()=>db.filters.delete(f.name)">Remove</button><button class="edit" @click="((activeFilter=queries.filters.find(l => l.name == f.name)?? activeFilter),(addFilterVisible=true))">Edit</button>{{ f.name }}</li>
     </ul>
     <h3>Manual Exclusions</h3>
     <button v-if="queries.exclude.size" @click="()=>void db.exclude.clear()">Clear All</button>
@@ -231,19 +231,19 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
       <li class="flat_entry" v-for="[i,e] in queries.exclude.entries()" :key="i"><button @click="()=>db.exclude.delete(e)">Remove</button>{{ e }}</li>
     </ul>
   </div>
-  <div :style="{['--scroller_size']:`${sizer}%`,['--scroller_pos']:`${positioner}%`}" tabindex="0" @keydown.left="pPage" @keydown.right="nPage" @keydown.a="e=>autoWomp(e,true)" @keydown.s="e=>autoWomp(e,false)" class="note">
-    <h3>Notable Sales [{{ nootable.length }}]</h3> <button class="dbut" @click="pPage">⇦</button><button class="dbut" @click="nPage">⇨</button><br>
+  <div :style="{['--scroller_size']:`${sizer}%`,['--scroller_pos']:`${positioner}%`}" tabindex="0" @keydown.left="pPage" @keydown.right="nPage" @keydown.a="e=>shortcutAdd(e,true)" @keydown.s="e=>shortcutAdd(e,false)" class="note">
+    <h3>Notable Sales [{{ notableEntries.length }}]</h3> <button class="dbut" @click="pPage">⇦</button><button class="dbut" @click="nPage">⇨</button><br>
     <div :style="{opacity:numPages === 1?0:1}" id="pseudoscroll"></div>
     <TransitionGroup name="list">
-      <ArubumItem :orig="orig" v-for=" i of nootable.sort((a,b) => a.amount_paid_usd>b.amount_paid_usd?-1:1).slice(pageSize*page,pageSize*(page+1))" :favd="queries.favorites.includes(i.idPlus)" :key="i.utc_date" :item="i" @del="(_,shift) => 
-    deligor(i,shift)" @fav="id=>db.favorites.add({id,date:Date.now()})" />
+      <ArubumItem :orig="origCurrency" v-for=" i of notableEntries.sort((a,b) => a.amount_paid_usd>b.amount_paid_usd?-1:1).slice(pageSize*page,pageSize*(page+1))" :favd="queries.favorites.includes(i.idPlus)" :key="i.utc_date" :item="i" @del="(_,shift) => 
+    autoRemove(i,shift)" @fav="id=>db.favorites.add({id,date:Date.now()})" />
     </TransitionGroup>
   </div>
   <div v-for="x of ([0,1] as const)" :key="x" class="cont">
     <h3 v-if="x">Current Sales: Newest</h3>
     <h3 v-else>Current Sales: Highest Paid</h3>
     <TransitionGroup name="list">
-      <ArubumItem :orig="orig" v-for="i of filCamp.map(m=>checkNotability(m))
+      <ArubumItem :orig="origCurrency" v-for="i of filteredEntries.map(m=>checkNotability(m))
       .sort((a,b) => ((c= (['artist_name','utc_date'] as const)[x])=>(a[c] > b[c]?-1:1))())
       .sort((a,b) => x?1:a.amount_paid_usd < b.amount_paid_usd?1:-1)" :key="i.utc_date" :favd="queries.favorites.includes(i.idPlus)" :item="i" @del="id => (db.exclude.add({id,date:Date.now()}))" @fav="id=>db.favorites.add({id,date:Date.now()})" />
     </TransitionGroup>
