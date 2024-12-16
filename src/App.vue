@@ -76,7 +76,7 @@ onUnmounted(()=>{
 
 const stored = localStorage.getItem('bcd')
 const storedVal:SettingsObject|undefined = stored?JSON.parse(stored):undefined
-const settings = ref<SettingsObject>({overpayThreshold:10,priceMin:0,priceLimit:999,priceThreshold:0,type:'a',refresher:20,...storedVal})
+const settings = ref<SettingsObject>({overpayThreshold:10,priceMin:0,priceLimit:999,priceThreshold:0,type:'a',refresher:30,...storedVal})
 
 const editExclude = ref(false)
 const editFav = ref(false)

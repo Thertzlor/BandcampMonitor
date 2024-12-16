@@ -14,7 +14,9 @@ The main use case of this app is to act as a "capitalism based" music discovery 
 Want to know which of the millions of albums on bandcamp might be worth your time? Seeing what people are throwing their money at right now might be a good start.
 
 ## Installation
-Simply clone this repository, and after `npm install` either run `npm run dev` to quickly get a local dev server up or `npm run build` to get a the bundled app you can put on your server.
+Bandcamp Monitor is deployed as a GitHub page at [https://thertzlor.github.io/BandcampMonitor/]([https://](https://thertzlor.github.io/BandcampMonitor/)) for your enjoyment.
+
+To run it yourself, simply clone this repository and after `npm install` either run `npm run dev` to quickly get a local dev server up or `npm run build` for the bundled app you can put on your server.
 
 >**Note:** Bandcamp Monitor does not centrally store any data on any servers, it only fetches requests from bandcamp and any favorites, filters and settings are stored locally on your client.
 
