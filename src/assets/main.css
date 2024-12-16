@@ -1,0 +1,9 @@
+body{background:#191a26;color:white;font-family: Calibri;font-size: 1.5em;}
+
+* {
+    text-shadow: 0 0 5px black, 0 0 5px #0000009e;
+}
+
+a:hover {
+  text-decoration: underline !important;
+}
