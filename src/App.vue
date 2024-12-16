@@ -168,7 +168,7 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
 
 <template>
   <div id="logo"><img src="./assets/bcm_logo.png" alt="bmonitor logo"></div>
-  <a v-if="!optVis" id="helplink" title="Help/Readme" href="#">?</a>
+  <a v-if="!optVis" id="helplink" title="Help/Readme" href="https://github.com/Thertzlor/BandcampMonitor/blob/main/README.md#usage">?</a>
   <div class="form">
     <label title="Show Settings" id="mainOpt">⚙<input type="checkbox" class="inbox" v-model="optVis"></label>
 
@@ -248,7 +248,7 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
       .sort((a,b) => x?1:a.amount_paid_usd < b.amount_paid_usd?1:-1)" :key="i.utc_date" :favd="queries.favorites.includes(i.idPlus)" :item="i" @del="id => (db.exclude.add({id,date:Date.now()}))" @fav="id=>db.favorites.add({id,date:Date.now()})" />
     </TransitionGroup>
   </div>
-  <footer> <a title="Check out the repo!" href="#"> <img src="./assets/gh.svg" alt="github logo"> </a> </footer>
+  <footer> <a title="Check out the repo!" href="https://github.com/Thertzlor/BandcampMonitor/"> <img src="./assets/gh.svg" alt="github logo"> </a> </footer>
 </template>
 <style scoped>
 #logo {
