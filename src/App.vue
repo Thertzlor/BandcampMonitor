@@ -157,7 +157,7 @@ const shortcutAdd = (ev:KeyboardEvent,fav=false) => {
 }
 
 const numPages = computed(()=> Math.ceil(notableEntries.value.length/pageSize))
-watch(numPages,()=>page.value = Math.min(page.value,numPages.value-1))
+watch(numPages,()=>page.value = Math.max(Math.min(page.value,numPages.value-1),0))
 watch(addFilterVisible,a => !a && (activeFilter.value = getDefault()))
 const nPage = () => page.value=Math.min(numPages.value-1,page.value+1)
 const pPage = () => page.value = Math.max(0,page.value-1)
