@@ -52,7 +52,7 @@ const origCurrency = ref(true)
 const addFilterVisible = ref(false)
 const inFocus = ref(true)
 
-document.addEventListener("visibilitychange", () => {inFocus.value = !document.hidden})
+document.addEventListener("visibilitychange", () => inFocus.value = !document.hidden)
 const db = new (class BandcampDexie extends Dexie {
   exclude!:Table<{id:string,date?:number}>
   favorites!:Table<{id:string,date?:number}>
@@ -88,12 +88,12 @@ const notable = ref<Record<string,BandcampInfo>>({})
 
 const checkNotability = (i:BandcampInfo) => {
   const {amount_paid_usd,url,item_price_usd} = i
-  if(unNotable.value.has(url)) return i
+  if(unNotable.value.has(url)) return
   const overpaid = amount_paid_usd - item_price_usd
-  if(amount_paid_usd < settings.value.priceThreshold  || overpaid < settings.value.overpayThreshold) return i
+  if(amount_paid_usd < settings.value.priceThreshold  || overpaid < settings.value.overpayThreshold) return
   if(notable.value[url]) notable.value[url].amount_paid_usd = Math.max(amount_paid_usd,notable.value[url].amount_paid_usd)
   else notable.value[url] = i
-  return i
+  return
 }
 
 const matchFilter = (f:FilterObject, b:BandcampInfo) => {
@@ -160,6 +160,7 @@ const shortcutAdd = (ev:KeyboardEvent,fav=false) => {
 const numPages = computed(()=> Math.ceil(notableEntries.value.length/pageSize))
 watch(numPages,()=>page.value = Math.max(Math.min(page.value,numPages.value-1),0))
 watch(addFilterVisible,a => !a && (activeFilter.value = getDefault()))
+watch(filteredEntries, e => {for (const el of e) checkNotability(el)})
 const nPage = () => page.value=Math.min(numPages.value-1,page.value+1)
 const pPage = () => page.value = Math.max(0,page.value-1)
 const unReact = (x:any) => JSON.parse(JSON.stringify(x))
@@ -245,7 +246,7 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
       <h3 v-if="x">Current Sales: Newest</h3>
       <h3 v-else>Current Sales: Highest Paid</h3>
       <TransitionGroup name="list">
-        <ArubumItem :orig="origCurrency" v-for="i of filteredEntries.map(m=>checkNotability(m))
+        <ArubumItem :orig="origCurrency" v-for="i of filteredEntries
       .sort((a,b) => ((c= (['artist_name','utc_date'] as const)[x])=>(a[c] > b[c]?-1:1))())
       .sort((a,b) => x?1:a.amount_paid_usd < b.amount_paid_usd?1:-1)" :key="i.utc_date" :favd="queries.favorites.includes(i.idPlus)" :item="i" @del="id => (db.exclude.add({id,date:Date.now()}))" @fav="id=>db.favorites.add({id,date:Date.now()})" />
       </TransitionGroup>
