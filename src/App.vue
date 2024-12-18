@@ -50,12 +50,13 @@ const unNotable = ref(new Set<string>())
 const blockRefresh = ref(false)
 const origCurrency = ref(true)
 const addFilterVisible = ref(false)
+const inFocus = ref(true)
 
+document.addEventListener("visibilitychange", () => {inFocus.value = !document.hidden})
 const db = new (class BandcampDexie extends Dexie {
   exclude!:Table<{id:string,date?:number}>
   favorites!:Table<{id:string,date?:number}>
   filters!:Table<FilterObject>
-
   constructor(){
     super('bandcamper-db');
     this.version(1).stores({exclude:'id',favorites:'id',filters:'name'});
@@ -231,7 +232,7 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
       <li class="flat_entry" v-for="[i,e] in queries.exclude.entries()" :key="i"><button @click="()=>db.exclude.delete(e)">Remove</button>{{ e }}</li>
     </ul>
   </div>
-  <div :style="{['--scroller_size']:`${sizer}%`,['--scroller_pos']:`${positioner}%`}" tabindex="0" @keydown.left="pPage" @keydown.right="nPage" @keydown.a="e=>shortcutAdd(e,true)" @keydown.s="e=>shortcutAdd(e,false)" class="note">
+  <div v-if="inFocus" :style="{['--scroller_size']:`${sizer}%`,['--scroller_pos']:`${positioner}%`}" tabindex="0" @keydown.left="pPage" @keydown.right="nPage" @keydown.a="e=>shortcutAdd(e,true)" @keydown.s="e=>shortcutAdd(e,false)" class="note">
     <h3>Notable Sales [{{ notableEntries.length }}]</h3> <button class="dbut" @click="pPage">⇦</button><button class="dbut" @click="nPage">⇨</button><br>
     <div :style="{opacity:numPages === 1?0:1}" id="pseudoscroll"></div>
     <TransitionGroup name="list">
@@ -239,15 +240,17 @@ const positioner = computed(()=> (page.value/(numPages.value-1)) * (100-sizer.va
     autoRemove(i,shift)" @fav="id=>db.favorites.add({id,date:Date.now()})" />
     </TransitionGroup>
   </div>
-  <div v-for="x of ([0,1] as const)" :key="x" class="cont">
-    <h3 v-if="x">Current Sales: Newest</h3>
-    <h3 v-else>Current Sales: Highest Paid</h3>
-    <TransitionGroup name="list">
-      <ArubumItem :orig="origCurrency" v-for="i of filteredEntries.map(m=>checkNotability(m))
+  <template v-if="inFocus">
+    <div v-for="x of ([0,1] as const)" :key="x" class="cont">
+      <h3 v-if="x">Current Sales: Newest</h3>
+      <h3 v-else>Current Sales: Highest Paid</h3>
+      <TransitionGroup name="list">
+        <ArubumItem :orig="origCurrency" v-for="i of filteredEntries.map(m=>checkNotability(m))
       .sort((a,b) => ((c= (['artist_name','utc_date'] as const)[x])=>(a[c] > b[c]?-1:1))())
       .sort((a,b) => x?1:a.amount_paid_usd < b.amount_paid_usd?1:-1)" :key="i.utc_date" :favd="queries.favorites.includes(i.idPlus)" :item="i" @del="id => (db.exclude.add({id,date:Date.now()}))" @fav="id=>db.favorites.add({id,date:Date.now()})" />
-    </TransitionGroup>
-  </div>
+      </TransitionGroup>
+    </div>
+  </template>
   <footer> <a title="Check out the repo!" href="https://github.com/Thertzlor/BandcampMonitor/"> <img src="./assets/gh.svg" alt="github logo"> </a> </footer>
 </template>
 <style scoped>
